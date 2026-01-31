@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariadb
+spec:
+  selector:
+    matchLabels:
+      app: mariadb
+  template:
+    metadata:
+      labels:
+        app: mariadb
+    spec:
+      containers:
+        - name: mariadb
+          image: {{.Values.mariadb.image}}
+          env:
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "{{ ternary "yes" "no" .Values.mariadb.allowEmptyPassword }}"
+            - name: MARIADB_USER
+              value: {{.Values.mariadb.user}}
+            - name: MARIADB_DATABASE
+              value: {{.Values.mariadb.database}}
+            - name: MARIADB_CHARACTER_SET
+              value: {{.Values.mariadb.charset}}
+            - name: MARIADB_COLLATE
+              value: {{.Values.mariadb.collate}}
+          volumeMounts:
+            - name: mariadb-data
+              mountPath: /bitnami/mariadb
+      volumes:
+        - name: mariadb-data
+          persistentVolumeClaim:
+            claimName: mariadb-data
