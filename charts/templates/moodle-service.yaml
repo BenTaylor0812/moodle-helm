@@ -9,6 +9,7 @@ spec:
   ports:
     - name: http
       port: {{.Values.moodle.service.portHttp}}
+      targetPort: {{.Values.moodle.service.portHttp}}
       nodePort: {{.Values.moodle.service.nodePortHttp}}
     - name: https
       port: {{.Values.moodle.service.portHttps}}

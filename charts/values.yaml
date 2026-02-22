@@ -8,9 +8,9 @@ mariadb:
   storage: 8Gi
 
 moodle:
-  image: docker.io/bitnamilegacy/moodle:latest
+  image: docker.io/bentaylor0812/moodle:version7
   service:
-    portHttp: 8080
+    portHttp: 80
     portHttps: 8443
     nodePortHttp: 30080
     nodePortHttps: 30443
