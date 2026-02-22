@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: moodle-config
+data:
+  MOODLE_DATABASE_HOST: "{{ .Values.mariadb.host }}"
+  MOODLE_DATABASE_PORT_NUMBER: "{{ .Values.mariadb.service.port }}"
+  MOODLE_DATABASE_USER: "{{ .Values.mariadb.user }}"
+  MOODLE_DATABASE_NAME: "{{ .Values.mariadb.database }}"

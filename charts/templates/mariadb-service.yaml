@@ -6,5 +6,5 @@ spec:
   selector:
     app: mariadb
   ports:
-    - port: 3306
-      targetPort: 3306
+    - port: {{.Values.mariadb.service.port}}
+      targetPort: {{.Values.mariadb.service.port}}

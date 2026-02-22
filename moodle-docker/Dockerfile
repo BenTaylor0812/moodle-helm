@@ -28,7 +28,7 @@ RUN tar -xz -f /tmp/moodle.tgz -C /usr/src/moodle --strip-components=1 \
 RUN chown -R www-data:www-data /var/www/moodle /var/www/moodledata && \
     chmod -R u+rwX,go+rX /var/www/moodle /var/www/moodledata
 
-RUN printf "max_input_vars = 5000\n" > /usr/local/etc/php/conf.d/moodle.ini
+COPY moodle.ini /usr/local/etc/php/conf.d/moodle.ini
 
 # Copy entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/
