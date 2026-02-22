@@ -15,32 +15,26 @@ spec:
         - name: moodle
           image: {{.Values.moodle.image}}
           env:
-            - name: MOODLE_WWWROOT
-              value: "http://localhost:{{ .Values.moodle.service.nodePortHttp }}"
+            - name: SKIP_INSTALL
+              value: 'false'
             - name: MOODLE_DATABASE_HOST
-              value: {{.Values.moodle.databaseHost}}
+              value: mariadb
             - name: MOODLE_DATABASE_PORT_NUMBER
-              value: "{{ .Values.moodle.databasePort }}"
+              value: '3306'
             - name: MOODLE_DATABASE_USER
-              value: {{.Values.moodle.databaseUser}}
-            - name: MOODLE_DATABASE_PASSWORD
-              value: ""
+              value: bn_moodle
             - name: MOODLE_DATABASE_NAME
-              value: {{.Values.moodle.databaseName}}
-            - name: ALLOW_EMPTY_PASSWORD
-              value: "{{ternary "yes" "no" .Values.moodle.allowEmptyPassword}}"
+              value: bitnami_moodle
+            - name: MOODLE_DATABASE_PASSWORD
+              value: ''
+            - name: MOODLE_WWWROOT
+              value: 'http://localhost:30080'
           ports:
-            - containerPort: {{.Values.moodle.service.portHttp}}
-            - containerPort: {{.Values.moodle.service.portHttps}}
+            - containerPort: 80
           volumeMounts:
-            - name: moodledata-data
-              mountPath: /bitnami/moodledata
-
+            - name: moodledata
+              mountPath: /var/www/moodledata
       volumes:
-        - name: moodle-data
+        - name: moodledata
           persistentVolumeClaim:
-            claimName: moodle-data
-        - name: moodledata-data
-          persistentVolumeClaim:
-            claimName: moodledata-data
-
+            claimName: moodledata

@@ -7,10 +7,6 @@ spec:
   selector:
     app: moodle
   ports:
-    - name: http
-      port: {{.Values.moodle.service.portHttp}}
-      targetPort: {{.Values.moodle.service.portHttp}}
-      nodePort: {{.Values.moodle.service.nodePortHttp}}
-    - name: https
-      port: {{.Values.moodle.service.portHttps}}
-      nodePort: {{.Values.moodle.service.nodePortHttps}}
+    - port: 80
+      targetPort: 80
+      nodePort: 30080
