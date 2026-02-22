@@ -1,0 +1,23 @@
+mariadb:
+  image: docker.io/bitnami/mariadb:latest
+  user: bn_moodle
+  database: bitnami_moodle
+  charset: utf8mb4
+  collate: utf8mb4_unicode_ci
+  allowEmptyPassword: true
+  storage: 8Gi
+
+moodle:
+  image: docker.io/bentaylor0812/moodle:version7
+  service:
+    portHttp: 80
+    portHttps: 8443
+    nodePortHttp: 30080
+    nodePortHttps: 30443
+  databaseHost: mariadb
+  databasePort: 3306
+  databaseUser: bn_moodle
+  databaseName: bitnami_moodle
+  allowEmptyPassword: true
+  storageMoodle: 8Gi
+  storageMoodledata: 8Gi

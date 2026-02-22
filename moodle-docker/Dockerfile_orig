@@ -1,0 +1,37 @@
+FROM php:8.2-apache
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    git unzip libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev libzip-dev libicu-dev libonig-dev \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install gd intl zip mysqli opcache
+
+# Enable Apache rewrite
+RUN a2enmod rewrite
+
+# Create Bitnami-style directories
+RUN mkdir -p /bitnami/moodle /bitnami/moodledata \
+    && chown -R www-data:www-data /bitnami
+
+# Download Moodle source
+ARG MOODLE_VERSION=4.3
+RUN curl -L https://download.moodle.org/download.php/direct/stable501/moodle-latest-501.tgz \
+    | tar -xz -C /bitnami/moodle --strip-components=1
+
+RUN rm -rf /var/www/html && \
+    ln -s /bitnami/moodle /var/www/html
+
+# Copy entrypoint
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+RUN chown -R 1001:1001 /bitnami/moodle && \
+    chmod -R u+rwX,go+rX /bitnami/moodle
+
+    
+# Increase PHP limits for Moodle
+
+RUN echo "max_input_vars = 5000" > /usr/local/etc/php/conf.d/moodle.ini
+
+EXPOSE 80 8443
+ENTRYPOINT ["docker-entrypoint.sh"]
+CMD ["apache2-foreground"]

@@ -1,0 +1,25 @@
+#!/bin/bash
+set -e
+
+MOODLE_DIR=/bitnami/moodle
+MOODLEDATA_DIR=/bitnami/moodledata
+
+if [ ! -f "$MOODLE_DIR/config.php" ]; then
+  php $MOODLE_DIR/admin/cli/install.php \
+    --non-interactive \
+    --agree-license \
+    --wwwroot="http://localhost:8080" \
+    --dataroot="$MOODLEDATA_DIR" \
+    --dbtype="mariadb" \
+    --dbhost="$MOODLE_DATABASE_HOST" \
+    --dbname="$MOODLE_DATABASE_NAME" \
+    --dbuser="$MOODLE_DATABASE_USER" \
+    --dbpass="$MOODLE_DATABASE_PASSWORD" \
+    --fullname="Moodle" \
+    --shortname="moodle" \
+    --adminuser="admin" \
+    --adminpass="admin123!" \
+    --adminemail="admin@example.com"
+fi
+
+exec "$@"

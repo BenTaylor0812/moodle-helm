@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: moodle
+spec:
+  selector:
+    matchLabels:
+      app: moodle
+  template:
+    metadata:
+      labels:
+        app: moodle
+    spec:
+      containers:
+        - name: moodle
+          image: {{.Values.moodle.image}}
+          env:
+            - name: MOODLE_DATABASE_HOST
+              value: {{.Values.moodle.databaseHost}}
+            - name: MOODLE_DATABASE_PORT_NUMBER
+              value: "{{ .Values.moodle.databasePort }}"
+            - name: MOODLE_DATABASE_USER
+              value: {{.Values.moodle.databaseUser}}
+            - name: MOODLE_DATABASE_NAME
+              value: {{.Values.moodle.databaseName}}
+            - name: ALLOW_EMPTY_PASSWORD
+              value: "{{ternary "yes" "no" .Values.moodle.allowEmptyPassword}}"
+          ports:
+            - containerPort: {{.Values.moodle.service.portHttp}}
+            - containerPort: {{.Values.moodle.service.portHttps}}
+          volumeMounts:
+            - name: moodledata-data
+              mountPath: /bitnami/moodledata
+      volumes:
+        - name: moodle-data
+          persistentVolumeClaim:
+            claimName: moodle-data
+        - name: moodledata-data
+          persistentVolumeClaim:
+            claimName: moodledata-data
