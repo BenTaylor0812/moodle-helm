@@ -11,15 +11,18 @@ RUN a2enmod rewrite
 # Create directories
 RUN mkdir -p /var/www/moodle /var/www/moodledata
 
-# Download Moodle
+
+# Copy in Moodle
+
 ARG MOODLE_VERSION=5.1.3
 COPY moodle-versions/moodle-${MOODLE_VERSION}.tgz /tmp/moodle.tgz
-RUN tar -xz -f /tmp/moodle.tgz -C /var/www/moodle --strip-components=1 \
+RUN mkdir -p /usr/src/moodle
+RUN tar -xz -f /tmp/moodle.tgz -C /usr/src/moodle --strip-components=1 \
     && rm /tmp/moodle.tgz
 
-# Apache should serve the public directory
-RUN rm -rf /var/www/html && \
-    ln -s /var/www/moodle/public /var/www/html
+# # Apache should serve the public directory
+# RUN rm -rf /var/www/html && \
+#     ln -s /var/www/moodle/public /var/www/html
 
 # Permissions
 RUN chown -R www-data:www-data /var/www/moodle /var/www/moodledata && \

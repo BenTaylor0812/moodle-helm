@@ -8,7 +8,7 @@ mariadb:
   storage: 8Gi
 
 moodle:
-  image: docker.io/bentaylor0812/moodle:1.0.1_testing_3
+  image: docker.io/bentaylor0812/moodle:5.1.3_version3
   service:
     portHttp: 80
     portHttps: 8443

@@ -14,7 +14,19 @@ if [ "$SKIP_INSTALL" = "true" ]; then
     exec "$@"
 fi
 
-echo "Checking if Moodle is already installed..."
+if [ ! -f /var/www/moodle/config.php ]; then
+    echo "Moodle code directory is empty, copying fresh Moodle..."
+    cp -R /usr/src/moodle/* /var/www/moodle/
+    chown -R www-data:www-data /var/www/moodle
+fi
+
+if [ ! -L /var/www/html ]; then
+    rm -rf /var/www/html
+    ln -s /var/www/moodle/public /var/www/html
+fi
+
+
+echo "Checking if Moodle database is already configured..."
 if ! mysql -h"$MOODLE_DATABASE_HOST" \
     -u"$MOODLE_DATABASE_USER" \
     -p"$MOODLE_DATABASE_PASSWORD" \
@@ -43,6 +55,8 @@ if ! mysql -h"$MOODLE_DATABASE_HOST" \
     echo "Fixing permissions..."
     chown -R www-data:www-data /var/www/moodle
     chmod -R u+rwX,go+rX /var/www/moodle
+
+
 
 else
     echo "Moodle already installed — skipping installer."

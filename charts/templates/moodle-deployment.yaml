@@ -32,9 +32,14 @@ spec:
           ports:
             - containerPort: 80
           volumeMounts:
-            - name: moodledata
+            - name: moodle-code
+              mountPath: /var/www/moodle
+            - name: moodle-data
               mountPath: /var/www/moodledata
       volumes:
-        - name: moodledata
+        - name: moodle-code
           persistentVolumeClaim:
-            claimName: moodledata
+            claimName: moodle-code
+        - name: moodle-data
+          persistentVolumeClaim:
+            claimName: moodle-data
