@@ -48,7 +48,4 @@ else
     echo "Moodle already installed — skipping installer."
 fi
 
-
-
-
 exec "$@"

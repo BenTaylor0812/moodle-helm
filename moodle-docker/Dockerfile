@@ -12,9 +12,10 @@ RUN a2enmod rewrite
 RUN mkdir -p /var/www/moodle /var/www/moodledata
 
 # Download Moodle
-ARG MOODLE_VERSION=4.3
-RUN curl -L https://download.moodle.org/download.php/direct/stable501/moodle-latest-501.tgz \
-    | tar -xz -C /var/www/moodle --strip-components=1
+ARG MOODLE_VERSION=5.1.3
+COPY moodle-versions/moodle-${MOODLE_VERSION}.tgz /tmp/moodle.tgz
+RUN tar -xz -f /tmp/moodle.tgz -C /var/www/moodle --strip-components=1 \
+    && rm /tmp/moodle.tgz
 
 # Apache should serve the public directory
 RUN rm -rf /var/www/html && \
