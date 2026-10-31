@@ -15,32 +15,7 @@ spec:
         - name: moodle
           image: {{ .Values.moodle.image }}
           env:
-            - name: SKIP_INSTALL
-              value: {{ .Values.moodle.skipInstall | quote }}
-            - name: MOODLE_DATABASE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: moodle-db
-                  key: password
-            # Derived from ingress.host unless moodle.wwwroot overrides it.
-            - name: MOODLE_WWWROOT
-              value: {{ include "moodle.wwwroot" . | quote }}
-            # Derived from the wwwroot scheme — see _helpers.tpl.
-            - name: MOODLE_SSLPROXY
-              value: {{ include "moodle.sslproxy" . | quote }}
-            - name: MOODLE_SITE_FULLNAME
-              value: {{ .Values.moodle.site.fullname | quote }}
-            - name: MOODLE_SITE_SHORTNAME
-              value: {{ .Values.moodle.site.shortname | quote }}
-            - name: MOODLE_ADMIN_USER
-              value: {{ .Values.moodle.admin.user | quote }}
-            - name: MOODLE_ADMIN_EMAIL
-              value: {{ .Values.moodle.admin.email | quote }}
-            - name: MOODLE_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: moodle-admin
-                  key: password
+            {{- include "moodle.env" . | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: moodle-config
@@ -76,6 +51,42 @@ spec:
               mountPath: /var/www/moodle
             - name: moodle-data
               mountPath: /var/www/moodledata
+{{- if .Values.moodle.cron.enabled }}
+        # Moodle requires admin/cli/cron.php to run every minute. Without it,
+        # scheduled tasks, outbound email, forum digests, backups and completion
+        # tracking silently never run while the site appears healthy.
+        #
+        # A sidecar rather than a CronJob, deliberately: the code and data
+        # volumes are ReadWriteOnce, so a separate pod can only mount them if
+        # the scheduler happens to place it on the same node. A sidecar shares
+        # them by construction, on any cluster.
+        #
+        # `command` overrides the image ENTRYPOINT, so this container never runs
+        # the install logic — it only runs cron.
+        - name: cron
+          image: {{ .Values.moodle.image }}
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "Moodle cron: waiting for config.php..."
+              while [ ! -f /var/www/moodle/config.php ]; do sleep 5; done
+              echo "Moodle cron: running every {{ .Values.moodle.cron.intervalSeconds }}s"
+              while true; do
+                php /var/www/moodle/admin/cli/cron.php \
+                  || echo "Moodle cron: run failed (expected while first install is in progress)"
+                sleep {{ .Values.moodle.cron.intervalSeconds }}
+              done
+          env:
+            {{- include "moodle.env" . | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: moodle-config
+          volumeMounts:
+            - name: moodle-code
+              mountPath: /var/www/moodle
+            - name: moodle-data
+              mountPath: /var/www/moodledata
+{{- end }}
       volumes:
         - name: moodle-code
           persistentVolumeClaim:

@@ -1,3 +1,9 @@
+# StorageClass for all three PersistentVolumeClaims. Empty means "use the
+# cluster default", which is fine in a cluster you control. In a cluster you
+# don't, check `kubectl get storageclass` — if none is marked (default), the
+# PVCs will sit in Pending forever and nothing starts.
+storageClass: ''
+
 mariadb:
   # Official image, pinned. Previously bitnami/mariadb:latest — Bitnami moved
   # most free images out of that namespace in 2025, so it may simply not pull,
@@ -36,6 +42,14 @@ moodle:
   # is recommended — a wwwroot that disagrees with the hostname users actually
   # arrive on is the single most common way to break Moodle.
   wwwroot: ''
+
+  # Moodle needs admin/cli/cron.php run frequently or scheduled tasks, email,
+  # forum digests, backups and completion tracking silently never run. Runs as
+  # a sidecar in the Moodle pod — see moodle-deployment.yaml for why not a
+  # CronJob. Leave this enabled.
+  cron:
+    enabled: true
+    intervalSeconds: 60
 
   site:
     fullname: Moodle

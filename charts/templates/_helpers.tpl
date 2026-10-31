@@ -35,3 +35,41 @@ true
 false
 {{- end -}}
 {{- end -}}
+
+{{/*
+The Moodle environment, defined once and used by every container that runs
+Moodle code.
+
+This has to be shared rather than set per-container: config.php reads its values
+with getenv() at request time, so anything running a Moodle CLI script — the web
+container, the cron container — needs the full environment or it cannot reach
+the database.
+*/}}
+{{- define "moodle.env" -}}
+- name: SKIP_INSTALL
+  value: {{ .Values.moodle.skipInstall | quote }}
+- name: MOODLE_DATABASE_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: moodle-db
+      key: password
+# Derived from ingress.host unless moodle.wwwroot overrides it.
+- name: MOODLE_WWWROOT
+  value: {{ include "moodle.wwwroot" . | quote }}
+# Derived from the wwwroot scheme.
+- name: MOODLE_SSLPROXY
+  value: {{ include "moodle.sslproxy" . | quote }}
+- name: MOODLE_SITE_FULLNAME
+  value: {{ .Values.moodle.site.fullname | quote }}
+- name: MOODLE_SITE_SHORTNAME
+  value: {{ .Values.moodle.site.shortname | quote }}
+- name: MOODLE_ADMIN_USER
+  value: {{ .Values.moodle.admin.user | quote }}
+- name: MOODLE_ADMIN_EMAIL
+  value: {{ .Values.moodle.admin.email | quote }}
+- name: MOODLE_ADMIN_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: moodle-admin
+      key: password
+{{- end -}}
