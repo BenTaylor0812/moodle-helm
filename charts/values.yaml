@@ -1,26 +1,71 @@
 mariadb:
-  image: docker.io/bitnami/mariadb:latest
+  # Official image, pinned. Previously bitnami/mariadb:latest — Bitnami moved
+  # most free images out of that namespace in 2025, so it may simply not pull,
+  # and ':latest' means an unannounced major version upgrade on any node that
+  # re-pulls. MariaDB 11.4 is an LTS release and satisfies Moodle 5's minimum.
+  image: docker.io/library/mariadb:11.4
   host: mariadb
   database: moodle
   user: moodle_user
   charset: utf8mb4
   collate: utf8mb4_unicode_ci
-  allowEmptyPassword: true
   storage: 8Gi
   service:
     port: 3306
+  # Set these and the chart creates the moodle-db Secret — fine for a lab.
+  # Leave empty and create that Secret yourself. rootPassword falls back to
+  # password when not given.
+  password: ''
+  rootPassword: ''
 
 moodle:
   image: docker.io/bentaylor0812/moodle:5.1.3_version3
   service:
-    portHttp: 80
-    portHttps: 8443
-    nodePortHttp: 30080
-    nodePortHttps: 30443
+    # ClusterIP: the Ingress is the only way in. Use NodePort only if you are
+    # deploying without an ingress controller.
+    type: ClusterIP
+    port: 80
   databaseHost: mariadb
   databaseUser: moodle_user
   databaseName: moodle
-  allowEmptyPassword: true
   storageMoodle: 5Gi
   storageMoodledata: 10Gi
   skipInstall: 'false'
+
+  # Moodle's $CFG->wwwroot. Leave empty to derive it from ingress.host, which
+  # is recommended — a wwwroot that disagrees with the hostname users actually
+  # arrive on is the single most common way to break Moodle.
+  wwwroot: ''
+
+  site:
+    fullname: Moodle
+    shortname: moodle
+
+  admin:
+    user: admin
+    email: admin@example.com
+    # Set this and the chart creates the moodle-admin Secret for you — fine for
+    # a lab. Leave it empty and create that Secret yourself, which is what you
+    # want anywhere the password shouldn't live in a values file:
+    #   kubectl create secret generic moodle-admin --from-literal=password='...'
+    # Only used on first install; changing it later does nothing.
+    password: ''
+
+ingress:
+  enabled: true
+  className: nginx
+  host: moodle.example.com
+  annotations:
+    # Moodle uploads (course backups, assignment submissions) exceed the 1MB
+    # nginx default. Set per-ingress so the chart does not depend on the
+    # controller being configured a particular way.
+    nginx.ingress.kubernetes.io/proxy-body-size: 512m
+    # Certificate issuance is environment-specific and deliberately NOT set
+    # here. Add whatever the target cluster uses, e.g.:
+    #   cert-manager.io/cluster-issuer: letsencrypt-production
+    # Leave it out entirely if tls.secretName refers to a certificate that
+    # already exists in the namespace.
+  tls:
+    enabled: true
+    # Either cert-manager fills this in, or it names a pre-existing Secret.
+    secretName: moodle-tls

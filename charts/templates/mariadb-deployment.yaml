@@ -13,21 +13,34 @@ spec:
     spec:
       containers:
         - name: mariadb
-          image: {{.Values.mariadb.image}}
+          image: {{ .Values.mariadb.image }}
+          # The official image takes server settings as arguments rather than
+          # the MARIADB_CHARACTER_SET / MARIADB_COLLATE env vars Bitnami used.
+          args:
+            - --character-set-server={{ .Values.mariadb.charset }}
+            - --collation-server={{ .Values.mariadb.collate }}
           env:
-            - name: ALLOW_EMPTY_PASSWORD
-              value: "{{ ternary "yes" "no" .Values.mariadb.allowEmptyPassword }}"
-            - name: MARIADB_USER
-              value: {{.Values.mariadb.user}}
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moodle-db
+                  key: rootPassword
             - name: MARIADB_DATABASE
-              value: {{.Values.mariadb.database}}
-            - name: MARIADB_CHARACTER_SET
-              value: {{.Values.mariadb.charset}}
-            - name: MARIADB_COLLATE
-              value: {{.Values.mariadb.collate}}
+              value: {{ .Values.mariadb.database | quote }}
+            - name: MARIADB_USER
+              value: {{ .Values.mariadb.user | quote }}
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moodle-db
+                  key: password
+          ports:
+            - containerPort: {{ .Values.mariadb.service.port }}
+              name: mysql
           volumeMounts:
+            # Official image data directory. Bitnami used /bitnami/mariadb.
             - name: mariadb-data
-              mountPath: /bitnami/mariadb
+              mountPath: /var/lib/mysql
       volumes:
         - name: mariadb-data
           persistentVolumeClaim:

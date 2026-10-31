@@ -3,10 +3,11 @@ kind: Service
 metadata:
   name: moodle
 spec:
-  type: NodePort
+  type: {{ .Values.moodle.service.type }}
   selector:
     app: moodle
   ports:
-    - port: {{.Values.moodle.service.portHttp}}
-      targetPort: {{.Values.moodle.service.portHttp}}
-      nodePort: {{.Values.moodle.service.nodePortHttp}}
+    - port: {{ .Values.moodle.service.port }}
+      targetPort: {{ .Values.moodle.service.port }}
+      protocol: TCP
+      name: http

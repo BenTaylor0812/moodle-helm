@@ -13,32 +13,58 @@ spec:
     spec:
       containers:
         - name: moodle
-          image: {{.Values.moodle.image}}
+          image: {{ .Values.moodle.image }}
           env:
             - name: SKIP_INSTALL
-              value: 'false'
+              value: {{ .Values.moodle.skipInstall | quote }}
             - name: MOODLE_DATABASE_PASSWORD
               value: ''
+            # Derived from ingress.host unless moodle.wwwroot overrides it.
             - name: MOODLE_WWWROOT
-              value: 'http://localhost:30080'
+              value: {{ include "moodle.wwwroot" . | quote }}
+            # Derived from the wwwroot scheme — see _helpers.tpl.
+            - name: MOODLE_SSLPROXY
+              value: {{ include "moodle.sslproxy" . | quote }}
+            - name: MOODLE_SITE_FULLNAME
+              value: {{ .Values.moodle.site.fullname | quote }}
+            - name: MOODLE_SITE_SHORTNAME
+              value: {{ .Values.moodle.site.shortname | quote }}
+            - name: MOODLE_ADMIN_USER
+              value: {{ .Values.moodle.admin.user | quote }}
+            - name: MOODLE_ADMIN_EMAIL
+              value: {{ .Values.moodle.admin.email | quote }}
+            - name: MOODLE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: moodle-admin
+                  key: password
           envFrom:
             - configMapRef:
                 name: moodle-config
           ports:
-            - containerPort: {{.Values.moodle.service.portHttp}}
+            - containerPort: {{ .Values.moodle.service.port }}
+          # First install copies ~400MB of Moodle onto the volume and builds the
+          # database schema, which takes minutes. A startupProbe gives it room;
+          # Kubernetes holds the liveness probe off until this succeeds, so the
+          # pod is no longer killed mid-install.
+          startupProbe:
+            httpGet:
+              path: /
+              port: {{ .Values.moodle.service.port }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 60
           readinessProbe:
             httpGet:
               path: /
-              port: {{.Values.moodle.service.portHttp}}
-            initialDelaySeconds: 10
+              port: {{ .Values.moodle.service.port }}
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /
-              port: {{.Values.moodle.service.portHttp}}
-            initialDelaySeconds: 20
+              port: {{ .Values.moodle.service.port }}
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3

@@ -1,10 +1,18 @@
 FROM php:8.2-apache
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    git unzip libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev libzip-dev libicu-dev libonig-dev mariadb-client \
+# Install dependencies.
+#
+# Moodle 5.1 declares these extensions as REQUIRED in public/admin/environment.xml:
+#   ctype curl dom exif fileinfo filter gd hash iconv intl json mbstring
+#   openssl pcre simplexml soap sodium spl tokenizer xml xmlreader zip zlib
+#
+# All but gd, intl, zip, exif and soap are compiled into php:*-apache already.
+# mysqli is for MariaDB; opcache is a performance recommendation.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git unzip rsync libpng-dev libjpeg-dev libfreetype6-dev libxml2-dev libzip-dev libicu-dev libonig-dev mariadb-client \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install gd intl zip mysqli opcache
+    && docker-php-ext-install gd intl zip exif soap mysqli opcache \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN a2enmod rewrite
 
