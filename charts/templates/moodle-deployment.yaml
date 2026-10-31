@@ -18,7 +18,10 @@ spec:
             - name: SKIP_INSTALL
               value: {{ .Values.moodle.skipInstall | quote }}
             - name: MOODLE_DATABASE_PASSWORD
-              value: ''
+              valueFrom:
+                secretKeyRef:
+                  name: moodle-db
+                  key: password
             # Derived from ingress.host unless moodle.wwwroot overrides it.
             - name: MOODLE_WWWROOT
               value: {{ include "moodle.wwwroot" . | quote }}
