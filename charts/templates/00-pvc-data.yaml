@@ -5,8 +5,11 @@ metadata:
   annotations:
     "helm.sh/resource-policy": keep
 spec:
+  {{- if .Values.storageClass }}
+  storageClassName: {{ .Values.storageClass | quote }}
+  {{- end }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{.Values.moodle.storageMoodledata}}
+      storage: {{ .Values.moodle.storageMoodledata }}

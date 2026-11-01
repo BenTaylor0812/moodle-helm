@@ -22,58 +22,24 @@ until mysqladmin ping -h"$MOODLE_DATABASE_HOST" --protocol=tcp --skip-ssl --sile
   sleep 2
 done
 
-if [ "$SKIP_INSTALL" = "true" ]; then
-    echo "Skipping Moodle setup (debug mode)."
-    exec "$@"
-fi
+# Moodle's code is baked into the image at $MOODLE_DIR and the DocumentRoot
+# symlink is created at build time, so there is nothing to place on a volume
+# here. Only moodledata is persistent.
+echo "Moodle $(awk -F\' '/^\$release/ {print $2; exit}' "$MOODLE_DIR/public/version.php") from image"
 
 # ---------------------------------------------------------------------------
-# 1. Sync Moodle core from the image onto the code volume.
+# config.php, written on every start.
 #
-#    rsync on every start, not a one-off copy, so shipping a new image actually
-#    upgrades Moodle. A copy-once approach means the volume is populated at
-#    first boot and never refreshed, and image upgrades silently do nothing.
+# Written BEFORE the SKIP_INSTALL check on purpose. Every container that runs
+# Moodle code needs its own config.php, because containers in a pod share
+# volumes but not their filesystems — and Moodle's code now lives in the image
+# layer, not on a volume. The cron container therefore runs this entrypoint with
+# SKIP_INSTALL=true: it gets a config.php and waits for the database, but leaves
+# installing and upgrading to the web container.
 #
-#    --delete is deliberately NOT used. Plugins installed at runtime live on
-#    the volume but not in the image, and --delete would remove them. The
-#    trade-off is that files dropped upstream in a major Moodle upgrade linger
-#    as orphans; Moodle tolerates these and reports them under
-#    Site administration > Development > Code integrity.
-#
-#    Note Moodle 5 keeps version.php under public/, not at the root.
-# ---------------------------------------------------------------------------
-read_release() {
-    [ -f "$1" ] || return 0
-    awk -F"'" '/^\$release/ {print $2; exit}' "$1"
-}
-
-IMAGE_RELEASE="$(read_release /usr/src/moodle/public/version.php)"
-VOLUME_RELEASE="$(read_release "$MOODLE_DIR/public/version.php")"
-
-if [ -z "$VOLUME_RELEASE" ]; then
-    echo "Code volume empty — installing Moodle $IMAGE_RELEASE from image..."
-elif [ "$VOLUME_RELEASE" != "$IMAGE_RELEASE" ]; then
-    echo "Upgrading Moodle core on volume: $VOLUME_RELEASE -> $IMAGE_RELEASE"
-else
-    echo "Moodle $IMAGE_RELEASE already present — verifying core files..."
-fi
-
-# --chown applies only to files rsync actually transfers, so a no-op start
-# does not re-walk 50k files setting ownership.
-rsync -a --chown=www-data:www-data --exclude='config.php' \
-    /usr/src/moodle/ "$MOODLE_DIR"/
-
-if [ ! -L /var/www/html ]; then
-    rm -rf /var/www/html
-    ln -s "$MOODLE_DIR/public" /var/www/html
-fi
-
-# ---------------------------------------------------------------------------
-# 2. Write config.php on EVERY start.
-#
-#    The values are read by PHP from the environment at request time, so this
-#    file is identical in every deployment and the hostname is never baked in.
-#    This is what makes the same image work behind any ingress, in any cluster.
+# The values are read by PHP from the environment at request time, so this file
+# is identical in every deployment and the hostname is never baked in. That is
+# what lets the same image run behind any ingress, in any cluster.
 # ---------------------------------------------------------------------------
 echo "Writing config.php (wwwroot=$MOODLE_WWWROOT sslproxy=$MOODLE_SSLPROXY)..."
 cat > "$MOODLE_DIR/config.php" <<'PHP'
@@ -118,11 +84,19 @@ PHP
 chown www-data:www-data "$MOODLE_DIR/config.php"
 chmod 640 "$MOODLE_DIR/config.php"
 
+if [ "$SKIP_INSTALL" = "true" ]; then
+    echo "SKIP_INSTALL set — config.php written, skipping install/upgrade."
+    exec "$@"
+fi
+
 # ---------------------------------------------------------------------------
-# 3. Install the database if empty, otherwise apply any pending upgrade.
+# Install the database if empty, otherwise apply any pending upgrade.
 #
-#    install_database.php is used rather than install.php because install.php
-#    writes its own config.php — which is exactly the behaviour we removed.
+# install_database.php rather than install.php, because install.php writes its
+# own config.php — the behaviour we deliberately removed above.
+#
+# The upgrade branch is what makes a new image take effect: a newer Moodle in
+# the image against an older schema is detected and migrated here.
 # ---------------------------------------------------------------------------
 echo "Checking if Moodle database is already configured..."
 if ! mysql -h"$MOODLE_DATABASE_HOST" \
@@ -141,10 +115,6 @@ if ! mysql -h"$MOODLE_DATABASE_HOST" \
       --adminuser="$MOODLE_ADMIN_USER" \
       --adminpass="$MOODLE_ADMIN_PASSWORD" \
       --adminemail="$MOODLE_ADMIN_EMAIL"
-
-    echo "Fixing permissions..."
-    chown -R www-data:www-data "$MOODLE_DIR"
-    chmod -R u+rwX,go+rX "$MOODLE_DIR"
 else
     echo "Moodle database present — applying any pending upgrade..."
     php "$MOODLE_DIR/admin/cli/upgrade.php" --non-interactive

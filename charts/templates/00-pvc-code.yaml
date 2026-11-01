@@ -4,10 +4,12 @@ metadata:
   name: moodle-code
   annotations:
     "helm.sh/resource-policy": keep
-
 spec:
+  {{- if .Values.storageClass }}
+  storageClassName: {{ .Values.storageClass | quote }}
+  {{- end }}
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{.Values.moodle.storageMoodle}}
+      storage: {{ .Values.moodle.storageMoodle }}

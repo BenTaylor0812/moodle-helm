@@ -4,25 +4,27 @@ How upgrades work in this chart, and what to do for each kind.
 
 ## How it works
 
-The container's entrypoint does three things on every start, in order:
+**Moodle's code lives in the image, not on a volume.** Upgrading Moodle means
+building a new image and deploying it. Nothing is copied onto persistent
+storage at startup.
 
-1. **rsync** Moodle core from the image onto the `moodle-code` volume
-2. **rewrite `config.php`** from environment variables
-3. **run `admin/cli/upgrade.php`** if the database already exists
+On every container start the entrypoint:
 
-`rsync` runs without `--delete`. That means core files are refreshed from the
-image, while directories that exist only on the volume — your installed
-plugins — are left alone. So a new image upgrades Moodle without destroying
-plugins, and a plugin installed by hand survives every restart.
+1. waits for MariaDB
+2. writes `config.php` from environment variables
+3. installs the database schema if it's empty, or applies any pending upgrade
 
-The trade-off: files *removed* upstream in a major Moodle upgrade stay behind
-as orphans. Moodle tolerates this; *Site administration → Development → Code
-integrity* lists them if you want to tidy up.
+Only **`moodledata`** and the **database** persist. That means the running code
+is always exactly what the image contains — there's no volume accumulating
+state that drifts between your lab and the office, and no orphaned files left
+behind by an upgrade.
+
+The consequence: **plugins must be baked into the image.** Anything installed
+into the code directory at runtime is gone the moment the pod restarts.
 
 ## Before any upgrade: back up
 
-Both of these, every time. Upgrades change the database schema and are not
-reversible without a backup.
+Both of these, every time. Schema upgrades are not reversible without a backup.
 
 ```bash
 kubectl exec -n moodle deploy/mariadb -- \
@@ -31,12 +33,15 @@ kubectl exec -n moodle deploy/mariadb -- \
 ```
 
 ```bash
-kubectl exec -n moodle deploy/moodle -- \
+kubectl exec -n moodle deploy/moodle -c moodle -- \
   tar -czf - -C /var/www moodledata > moodledata-$(date +%F).tar.gz
 ```
 
+There's nothing to back up for the code — the image and this repository *are*
+that backup, which is one of the better arguments for the immutable approach.
+
 The PVCs carry `helm.sh/resource-policy: keep`, so `helm uninstall` won't
-delete your data — but that is not a backup, it's just a safety catch.
+delete your data. That's a safety catch, not a backup.
 
 ---
 
@@ -53,14 +58,14 @@ tar -xzf moodle-docker/moodle-versions/moodle-<new>.tgz \
   | grep -B2 'PHP version' | tail -20
 ```
 
-Look for the `<MOODLE version="X.Y">` block matching your target, and the
+Look for the `<MOODLE version="X.Y">` block matching your target and the
 `<PHP version="..." level="required">` inside it. If it exceeds the
 `FROM php:X.Y-apache` line in `moodle-docker/Dockerfile`, bump that too.
 
 Known so far: Moodle 5.0 and 5.1 require PHP 8.2; Moodle 5.2 requires PHP 8.3.
 
-Also check the required extension list in the same file against what the
-Dockerfile installs. Moodle 5.1 needs `exif` and `soap` on top of the defaults,
+Check the required extension list in the same file against what the Dockerfile
+installs. Moodle 5.1 needs `exif` and `soap` on top of the base image defaults,
 and a new release may add more.
 
 ### 2. Add the new tarball
@@ -71,6 +76,9 @@ curl -L -o moodle-docker/moodle-versions/moodle-<new>.tgz <download-url>
 
 Official downloads: https://download.moodle.org/releases/latest/
 
+Keep the tarball in the repository rather than fetching at build time — the
+build then works offline and reproduces identically in the office.
+
 ### 3. Build and push
 
 ```bash
@@ -80,28 +88,28 @@ docker push bentaylor0812/moodle:<new>_version1
 ```
 
 Use a new tag every time. Never reuse a tag or push `:latest` — nodes cache by
-tag, so a reused tag means some nodes run old code and you cannot tell which.
+tag, so a reused tag means some nodes run old code and you can't tell which.
 
 ### 4. Deploy
 
-```bash
-helm upgrade moodle ./charts -n moodle -f values-office.yaml \
-  --set moodle.image=docker.io/bentaylor0812/moodle:<new>_version1
-```
+Edit `moodle.image` in your values overlay and commit it, so the deployed
+version is recorded in git rather than living in someone's shell history:
 
-Better: edit the image in your values overlay and commit it, so the deployed
-version is recorded rather than living in shell history.
+```bash
+helm upgrade moodle ./charts -n moodle -f values-office.yaml
+```
 
 ### 5. Watch it
 
 ```bash
-kubectl logs -n moodle deploy/moodle -f
+kubectl logs -n moodle deploy/moodle -c moodle -f
 ```
 
 Expect, in order:
 
 ```
-Upgrading Moodle core on volume: 5.1.3 (...) -> 5.2.1 (...)
+Waiting for MariaDB at mariadb:3306...
+Moodle 5.2.1 (Build: ...) from image
 Writing config.php (wwwroot=... sslproxy=...)
 Moodle database present — applying any pending upgrade...
 ```
@@ -113,7 +121,7 @@ The `startupProbe` allows ten minutes; raise `failureThreshold` in
 ### 6. Verify, then purge caches
 
 ```bash
-kubectl exec -n moodle deploy/moodle -- php /var/www/moodle/admin/cli/purge_caches.php
+kubectl exec -n moodle deploy/moodle -c moodle -- php /var/www/moodle/admin/cli/purge_caches.php
 ```
 
 Check *Site administration → Notifications* for environment warnings, and
@@ -127,28 +135,69 @@ helm rollback moodle -n moodle
 
 **This reverts the code, not the database.** Moodle's schema upgrade is
 one-way. A rollback leaves old code against a newer schema, which Moodle will
-refuse to run. To roll back properly you must restore the database dump as
-well.
+refuse to run. To roll back properly you must restore the database dump too.
 
 This is why step zero is the backup.
 
 ---
 
-## Upgrading or installing plugins
+## Installing or upgrading plugins
 
-Plugins live on the `moodle-code` volume, so they persist across restarts and
-survive core upgrades. Two ways to manage them.
+Plugins go in the image. There is no other durable route, because the code
+directory isn't persistent.
 
-### Option A: install at runtime (current approach)
+### 1. Check compatibility
 
-Fine for a lab or a site you administer directly.
+Every plugin page on https://moodle.org/plugins lists the Moodle versions it
+supports. You can also read it straight from the zip:
 
-**1. Check compatibility.** Every plugin page on
-https://moodle.org/plugins lists which Moodle versions it supports. Installing
-a plugin built for an older release will fail its version check, or worse,
-half-install.
+```bash
+unzip -p plugin.zip '*/version.php' | grep -E 'requires|supported|release'
+```
 
-**2. Find the right directory.** Plugin type determines where it goes:
+`$plugin->requires` is a **minimum** Moodle version — a plugin built for an
+older release will usually still be accepted by a newer Moodle. What stops
+installation is `$plugin->supported`, which some plugins set as an upper bound.
+
+Accepted isn't the same as working, though. Moodle 5.0 moved the web root into
+`public/` and deprecated APIs along the way, so an older plugin may install and
+then misbehave. Test it.
+
+### 2. Add the zip to the repository
+
+```
+plugins/auth/auth_oidc.zip
+```
+
+Committing it keeps the build offline-capable and reproducible, same as the
+Moodle tarball.
+
+### 3. Add a block to the Dockerfile
+
+Place it after the Moodle extraction and **before** the `chown`:
+
+```dockerfile
+COPY plugins/auth/auth_oidc.zip /tmp/
+RUN unzip -q /tmp/auth_oidc.zip -d /var/www/moodle/public/auth/ \
+ && rm /tmp/auth_oidc.zip \
+ && test -f /var/www/moodle/public/auth/oidc/version.php
+```
+
+**That `test` line matters.** Moodle identifies a plugin by its directory name,
+so `auth_oidc` must unpack to a folder called exactly `oidc`. Zips from
+moodle.org usually get this right; GitHub archives usually don't, unpacking to
+something like `moodle-auth_oidc-main/`. The assertion fails the build
+immediately instead of leaving you with a confusing Moodle error later.
+
+If the archive does unpack wrongly, rename during the build:
+
+```dockerfile
+RUN unzip -q /tmp/plugin.zip -d /tmp/x \
+ && mv /tmp/x/* /var/www/moodle/public/auth/oidc \
+ && rm -rf /tmp/x /tmp/plugin.zip
+```
+
+Where each plugin type belongs:
 
 | Type | Directory |
 |---|---|
@@ -158,75 +207,65 @@ half-install.
 | `theme_*` | `/var/www/moodle/public/theme/` |
 | `local_*` | `/var/www/moodle/public/local/` |
 | `tool_*` | `/var/www/moodle/public/admin/tool/` |
+| `enrol_*` | `/var/www/moodle/public/enrol/` |
+| `filter_*` | `/var/www/moodle/public/filter/` |
 
-The unzipped directory name must match the plugin's component name exactly —
-`auth_oidc` unpacks to a folder called `oidc` inside `public/auth/`.
+### 4. Build, push, deploy
 
-**3. Install it:**
+Exactly as for a core upgrade. On the first start with the new image, the
+entrypoint's `upgrade.php` call notices the new plugin and installs its
+database tables. **No manual step.**
+
+### Trying a plugin out without a rebuild
+
+You can install into a running container, and it will work — until the pod
+restarts, at which point it's gone:
 
 ```bash
-kubectl exec -n moodle deploy/moodle -- bash -c '
+kubectl exec -n moodle deploy/moodle -c moodle -- bash -c '
   cd /var/www/moodle/public/auth &&
-  curl -L -o plugin.zip "<plugin-download-url>" &&
+  curl -L -o plugin.zip "<url>" &&
   unzip -q plugin.zip && rm plugin.zip &&
   chown -R www-data:www-data .
 '
-```
-
-**4. Apply the database changes:**
-
-```bash
-kubectl exec -n moodle deploy/moodle -- \
+kubectl exec -n moodle deploy/moodle -c moodle -- \
   php /var/www/moodle/admin/cli/upgrade.php --non-interactive
 ```
 
-**5. Purge caches:**
-
-```bash
-kubectl exec -n moodle deploy/moodle -- php /var/www/moodle/admin/cli/purge_caches.php
-```
-
-**Caveat:** a runtime-installed plugin exists only on that volume. Rebuild the
-cluster or lose the PVC and it's gone, and nothing in this repo records that it
-was ever installed. Keep a list.
-
-### Option B: bake plugins into the image (recommended once settled)
-
-Once you know which plugins you want permanently, put them in the image so the
-deployment is reproducible.
-
-Add to `moodle-docker/Dockerfile`, after the Moodle extraction:
-
-```dockerfile
-COPY plugins/auth/oidc.zip /tmp/
-RUN unzip -q /tmp/oidc.zip -d /usr/src/moodle/public/auth/ && rm /tmp/oidc.zip
-```
-
-Then rebuild and deploy as a core upgrade. `rsync` places them on the volume,
-and `upgrade.php` installs them. The repo now describes the full system, and a
-fresh cluster comes up identically.
+Useful for a quick evaluation. Never for anything you want to keep — and note
+the database tables persist after the files vanish, which leaves Moodle
+complaining about a plugin that's missing from disk.
 
 ### Removing a plugin
 
-Because `rsync` doesn't use `--delete`, deleting the files from the image is
-not enough — the copy on the volume stays. Uninstall properly from
-*Site administration → Plugins → Plugin overview*, which also removes its
-database tables, then delete the directory:
+Order matters. **Uninstall from Moodle first**, via
+*Site administration → Plugins → Plugin overview*, which drops its database
+tables. Then remove the `COPY`/`RUN` block from the Dockerfile, rebuild, and
+deploy.
 
-```bash
-kubectl exec -n moodle deploy/moodle -- rm -rf /var/www/moodle/public/auth/oidc
-```
+Removing it from the image without uninstalling leaves orphaned tables and
+Moodle reporting a missing plugin.
 
 ---
 
 ## A note on OAuth / Keycloak
 
-The `plugins/oauth/` directory in this repo holds `auth_oidc` builds for Moodle
-3.9 through 4.5. **None of them targets Moodle 5.x**, and the Dockerfile does
-not install them.
+The `plugins/oauth/` directory holds `auth_oidc` builds for Moodle 3.9 through
+4.5, and the Dockerfile does not install any of them.
 
-Before adding `auth_oidc`, consider that **Moodle has OAuth 2 in core** —
-*Site administration → Server → OAuth 2 services* — which works with a generic
-OIDC provider such as Keycloak and needs no plugin at all. `auth_oidc` is
-Microsoft's plugin, aimed at Entra ID; it has more features but is probably not
-what a Keycloak integration needs.
+Those builds would probably be *accepted* by Moodle 5.1 — `$plugin->requires`
+is a minimum and they declare no upper bound — but they predate the `public/`
+restructure in Moodle 5.0, so whether they work properly is untested.
+
+Two things worth knowing before reaching for `auth_oidc`:
+
+**Moodle has OAuth 2 in core** — *Site administration → Server → OAuth 2
+services*, with a `custom` issuer type that works against a generic OIDC
+provider such as Keycloak. No plugin, nothing to maintain across upgrades.
+
+**`auth_oidc` does not do role mapping either.** It's a long-standing open
+feature request. In Moodle, roles come from enrolment, not from the
+authentication plugin — the chain is
+`Keycloak group → Moodle cohort → cohort sync enrolment → role in a context`.
+Whichever auth plugin you choose, something still has to manage cohort
+membership. See `scripts/keycloak_to_moodle_csv.py` for the CSV route.

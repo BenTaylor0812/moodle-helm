@@ -5,7 +5,11 @@ metadata:
   annotations:
     "helm.sh/resource-policy": keep
 spec:
-  accessModes: ["ReadWriteOnce"]
+  {{- if .Values.storageClass }}
+  storageClassName: {{ .Values.storageClass | quote }}
+  {{- end }}
+  accessModes:
+    - ReadWriteOnce
   resources:
     requests:
-      storage: {{.Values.mariadb.storage}}
+      storage: {{ .Values.mariadb.storage }}

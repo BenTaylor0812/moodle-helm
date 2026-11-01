@@ -109,10 +109,10 @@ helm install moodle ./charts -n moodle -f values-office.yaml
 kubectl get pods -n moodle -w
 ```
 
-**First boot takes several minutes.** The container syncs ~400MB of Moodle onto
-the volume and then builds the database schema. A `startupProbe` allows up to
-ten minutes, so the pod is not killed mid-install — don't intervene unless it
-exceeds that.
+**First boot takes several minutes** while Moodle builds the database schema.
+Moodle's code is already in the image, so there's no file copying — the wait is
+entirely the install. A `startupProbe` allows up to ten minutes, so the pod is
+not killed mid-install; don't intervene unless it exceeds that.
 
 Follow what it's doing. The pod has two containers, so name the one you want:
 
@@ -169,5 +169,10 @@ Moodle.
 a `restricted` PodSecurityStandard the pod will be refused. Check with
 `kubectl get ns <namespace> -o yaml | grep pod-security`.
 
-**Single replica only.** The PVCs are ReadWriteOnce, so Moodle cannot be scaled
-beyond one pod without RWX storage.
+**Single replica only.** `moodledata` is ReadWriteOnce, so Moodle cannot be
+scaled beyond one pod without RWX storage.
+
+**Plugins require a rebuild.** Moodle's code ships in the image, so the
+web-based plugin installer and Moodle's self-update prompts don't work — adding
+a plugin means a new image. That's deliberate: it keeps the deployed code
+identical to the repository. See `UPGRADING.md`.

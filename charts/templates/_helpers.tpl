@@ -46,8 +46,6 @@ container, the cron container — needs the full environment or it cannot reach
 the database.
 */}}
 {{- define "moodle.env" -}}
-- name: SKIP_INSTALL
-  value: {{ .Values.moodle.skipInstall | quote }}
 - name: MOODLE_DATABASE_PASSWORD
   valueFrom:
     secretKeyRef:

@@ -15,16 +15,18 @@ spec:
         - name: moodle
           image: {{ .Values.moodle.image }}
           env:
+            - name: SKIP_INSTALL
+              value: {{ .Values.moodle.skipInstall | quote }}
             {{- include "moodle.env" . | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: moodle-config
           ports:
             - containerPort: {{ .Values.moodle.service.port }}
-          # First install copies ~400MB of Moodle onto the volume and builds the
-          # database schema, which takes minutes. A startupProbe gives it room;
-          # Kubernetes holds the liveness probe off until this succeeds, so the
-          # pod is no longer killed mid-install.
+          # Moodle's code is in the image, so startup is just config.php plus,
+          # on a fresh database, the schema install — which still takes minutes.
+          # A startupProbe gives it room; Kubernetes holds the liveness probe
+          # off until this succeeds, so the pod is not killed mid-install.
           startupProbe:
             httpGet:
               path: /
@@ -47,8 +49,6 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 3
           volumeMounts:
-            - name: moodle-code
-              mountPath: /var/www/moodle
             - name: moodle-data
               mountPath: /var/www/moodledata
 {{- if .Values.moodle.cron.enabled }}
@@ -56,20 +56,22 @@ spec:
         # scheduled tasks, outbound email, forum digests, backups and completion
         # tracking silently never run while the site appears healthy.
         #
-        # A sidecar rather than a CronJob, deliberately: the code and data
-        # volumes are ReadWriteOnce, so a separate pod can only mount them if
-        # the scheduler happens to place it on the same node. A sidecar shares
-        # them by construction, on any cluster.
+        # A sidecar rather than a CronJob, deliberately: moodledata is
+        # ReadWriteOnce, so a separate pod can only mount it if the scheduler
+        # happens to place it on the same node. A sidecar shares it by
+        # construction, on any cluster.
         #
-        # `command` overrides the image ENTRYPOINT, so this container never runs
-        # the install logic — it only runs cron.
+        # This runs the image's normal ENTRYPOINT with SKIP_INSTALL=true, so it
+        # waits for the database and writes its own config.php — which it needs,
+        # because containers in a pod share volumes but not filesystems, and
+        # Moodle's code is in the image layer. Only `args` is overridden, so the
+        # entrypoint then execs the cron loop instead of Apache.
         - name: cron
           image: {{ .Values.moodle.image }}
-          command: ["/bin/bash", "-c"]
           args:
+            - /bin/bash
+            - -c
             - |
-              echo "Moodle cron: waiting for config.php..."
-              while [ ! -f /var/www/moodle/config.php ]; do sleep 5; done
               echo "Moodle cron: running every {{ .Values.moodle.cron.intervalSeconds }}s"
               while true; do
                 php /var/www/moodle/admin/cli/cron.php \
@@ -77,20 +79,17 @@ spec:
                 sleep {{ .Values.moodle.cron.intervalSeconds }}
               done
           env:
+            - name: SKIP_INSTALL
+              value: "true"
             {{- include "moodle.env" . | nindent 12 }}
           envFrom:
             - configMapRef:
                 name: moodle-config
           volumeMounts:
-            - name: moodle-code
-              mountPath: /var/www/moodle
             - name: moodle-data
               mountPath: /var/www/moodledata
 {{- end }}
       volumes:
-        - name: moodle-code
-          persistentVolumeClaim:
-            claimName: moodle-code
         - name: moodle-data
           persistentVolumeClaim:
             claimName: moodle-data
