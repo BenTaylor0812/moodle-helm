@@ -34,7 +34,6 @@ moodle:
   databaseHost: mariadb
   databaseUser: moodle_user
   databaseName: moodle
-  storageMoodle: 5Gi
   storageMoodledata: 10Gi
   skipInstall: 'false'
 
